@@ -16,8 +16,8 @@ def load_data(github_base_url):
     try:
         # 최적화된 Parquet 파일 로드 (이전 단계에서 최적화된 파일명을 사용합니다)
         # 한글 파일명을 URL 인코딩
-        encoded_rental_filename = urllib.parse.quote('서울시_전월세거래_통합_위경도_격자포함_optimized_reduced.parquet')
-        rental_data_url = github_base_url + encoded_rental_filename
+        encoded_rental_filename = urllib.parse.quote('서울시_전월세거래_통합.parquet')
+        rental_data_url = 'https://raw.githubusercontent.com/urbandhwi/findingmyhome/main/dat + encoded_rental_filename
         df = pd.read_parquet(rental_data_url)
         st.success(f"전월세 거래 데이터 로드 완료: {rental_data_url}")
 

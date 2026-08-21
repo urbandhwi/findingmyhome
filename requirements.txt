@@ -1,8 +1,4 @@
-streamlit
-pandas
-geopandas
-folium
-streamlit-folium
-numpy
-pyarrow
-matplotlib
+streamlit>=1.30.0
+pandas>=2.0.0
+plotly>=5.18.0
+geopandas>=0.14.0

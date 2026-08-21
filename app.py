@@ -5,6 +5,7 @@ import folium
 from streamlit_folium import st_folium
 import numpy as np
 import os
+import urllib.parse # URL 인코딩을 위해 추가
 
 # --- 1. 데이터 로드 함수 정의 ---
 @st.cache_data
@@ -14,30 +15,38 @@ def load_data(github_base_url):
 
     try:
         # 최적화된 Parquet 파일 로드 (이전 단계에서 최적화된 파일명을 사용합니다)
-        rental_data_url = github_base_url + '서울시_전월세거래_통합.parquet'
+        # 한글 파일명을 URL 인코딩
+        encoded_rental_filename = urllib.parse.quote('서울시_전월세거래_통합_위경도_격자포함_optimized_reduced.parquet')
+        rental_data_url = github_base_url + encoded_rental_filename
         df = pd.read_parquet(rental_data_url)
         st.success(f"전월세 거래 데이터 로드 완료: {rental_data_url}")
 
         # geometry 컬럼 복원 (parquet 저장 시 제거되었을 수 있으므로)
         if 'geometry' not in df.columns:
             df = gpd.GeoDataFrame(
-                df, 
+                df,
                 geometry=gpd.points_from_xy(df.longitude, df.latitude),
                 crs="EPSG:4326"
             )
 
         # GeoJSON 파일 로드
-        grid_url = github_base_url + 'seoul_500m_grid.geojson'
+        # 한글 파일명을 URL 인코딩
+        encoded_grid_filename = urllib.parse.quote('seoul_500m_grid.geojson')
+        grid_url = github_base_url + encoded_grid_filename
         grid_gdf = gpd.read_file(grid_url)
         grid_gdf = grid_gdf.to_crs(epsg=4326) # CRS 통일
         st.success(f"500m 격자 데이터 로드 완료: {grid_url}")
 
-        dong_url = github_base_url + 'seoul_dong.geojson'
+        # 한글 파일명을 URL 인코딩
+        encoded_dong_filename = urllib.parse.quote('seoul_dong.geojson')
+        dong_url = github_base_url + encoded_dong_filename
         dong_gdf = gpd.read_file(dong_url)
         dong_gdf = dong_gdf.to_crs(epsg=4326) # CRS 통일
         st.success(f"법정동 경계 데이터 로드 완료: {dong_url}")
 
-        subway_url = github_base_url + '서울_지하철_종합.geojson'
+        # 한글 파일명을 URL 인코딩
+        encoded_subway_filename = urllib.parse.quote('서울_지하철_종합.geojson')
+        subway_url = github_base_url + encoded_subway_filename
         subway_gdf = gpd.read_file(subway_url)
         subway_gdf = subway_gdf.to_crs(epsg=4326) # CRS 통일
         st.success(f"서울 지하철 데이터 로드 완료: {subway_url}")
@@ -52,7 +61,7 @@ def load_data(github_base_url):
 st.set_page_config(layout="wide")
 st.title("🏠 서울시 전월세 가격 지도 분석 (Streamlit)")
 
-# GitHub raw content URL의 기본 경로를 설정하세요.
+# GitHub raw content URL의 기본 경로를 설정하세요。
 # YOUR_USERNAME, YOUR_REPOSITORY, YOUR_BRANCH는 실제 값으로 변경해야 합니다.
 github_base_url = 'https://raw.githubusercontent.com/{YOUR_USERNAME}/{YOUR_REPOSITORY}/{YOUR_BRANCH}/data/' # 예시: 'https://raw.githubusercontent.com/username/repo/main/data/'
 
@@ -145,7 +154,7 @@ if not filtered_df.empty:
         # '법정동코드_법정동shp' 컬럼이 seoul_dong.geojson에 없으므로 '법정동코드' 사용
         # seoul_dong_gdf의 '법정동코드'를 string으로 변환하여 조인 키 통일
         dong_gdf['법정동코드'] = dong_gdf['법정동코드'].astype(str)
-        
+
         # 전월세 데이터의 법정동코드를 string으로 변환
         filtered_df['법정동코드'] = filtered_df['법정동코드'].astype(str)
 
@@ -154,7 +163,7 @@ if not filtered_df.empty:
             max_환산월세='max',
             avg_환산월세='mean'
         ).reset_index()
-        
+
         plot_gdf = dong_gdf.merge(
             agg_data,
             left_on='법정동코드',
@@ -201,7 +210,7 @@ if not filtered_df.empty:
             right_on='grid_id',
             how='left'
         )
-        plot_gdf['avg_환산월세'] = plot_gdf['avg_환산월se']().fillna(np.nan) # 데이터 없는 지역은 NaN
+        plot_gdf['avg_환산월세'] = plot_gdf['avg_환산월세'].fillna(np.nan) # 데이터 없는 지역은 NaN
 
         folium.Choropleth(
             geo_data=plot_gdf,
@@ -235,7 +244,7 @@ if subway_gdf is not None and not subway_gdf.empty:
         '9호선': 'darkorange', '수인분당선': 'yellow', '신분당선': 'red',
         '우이신설선': 'lightgreen', '경의중앙선': 'mediumblue', '공항철도': 'darkblue',
         '경춘선': 'forestgreen', '서해선': 'darkmagenta', '김고선': 'gold', '에버라인': 'darkkhaki',
-        '의정부경전철': 'olive', '인천1호선': 'teal', '인천2호선': 'lightgray', 
+        '의정부경전철': 'olive', '인천1호선': 'teal', '인천2호선': 'lightgray',
         '신림선': 'lightcoral', '동해선': 'cyan', '용인경전철': 'gray',
         'GTX-A': 'lightseagreen', 'GTX-B': 'mediumpurple', 'GTX-C': 'darkcyan'
     }

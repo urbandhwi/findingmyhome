@@ -13,7 +13,7 @@ st.title("🏢 연립다세대·오피스텔 조건별 연도별 임대료 시�
 
 # 2. Github 데이터 로드 (캐싱 처리)
 # TODO: GITHUB_BASE_URL을 실제 파일이 위치한 GitHub Raw URL 경로로 수정하세요.
-GITHUB_BASE_URL = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY/main/"
+GITHUB_BASE_URL = "https://raw.githubusercontent.com/urbandhwi/findingmyhome/main/"
 
 @st.cache_data
 def load_data():

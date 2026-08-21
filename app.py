@@ -11,11 +11,11 @@ st.set_page_config(
 
 st.title("🏢 연립다세대·오피스텔 조건별 연도별 임대료 시각화")
 
-# 2. 상대 경로를 이용한 데이터 로드
+# 2. 상대 경로를 이용한 데이터 로드 (parquet 파일 읽기)
 @st.cache_data
 def load_data():
-    # 리포지토리 내 상대 경로 직접 지정 (예: app.py와 같은 위치 또는 data/ 폴더 위치)
-    df = pd.read_csv("rent_data.csv")
+    # Parquet 파일 및 공간 데이터 읽기
+    df = pd.read_parquet("seoul_rent.parquet")
     geojson_dong = gpd.read_file("seoul_dong.geojson")
     geojson_grid = gpd.read_file("seoul_grid.geojson")
     
@@ -24,7 +24,7 @@ def load_data():
 try:
     df_raw, geojson_dong, geojson_grid = load_data()
 except Exception as e:
-    st.error(f"데이터 파일 경로를 확인해주세요: {e}")
+    st.error(f"데이터 파일 로드 중 오류가 발생했습니다: {e}")
     st.stop()
 
 # 3. 사이드바 - 조건 선택 필터

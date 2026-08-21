@@ -17,7 +17,7 @@ def load_data():
     # Parquet 파일 및 공간 데이터 읽기
     df = pd.read_parquet("seoul_rent.parquet")
     geojson_dong = gpd.read_file("seoul_dong.geojson")
-    geojson_grid = gpd.read_file("seoul_grid.geojson")
+    geojson_grid = gpd.read_file("seoul_500m_grid.geojson")
     
     return df, geojson_dong, geojson_grid
 

@@ -41,18 +41,26 @@ def load_data(base_url):
                 crs="EPSG:4326"
             )
 
-        # GeoJSON 파일 로드
+        # GeoJSON 파일 로드 (법정동)
         encoded_dong_filename = urllib.parse.quote('seoul_dong.geojson')
         dong_url = base_url + encoded_dong_filename
         geojson_dong = gpd.read_file(dong_url)
         geojson_dong = geojson_dong.to_crs(epsg=4326) # CRS 통일
         st.success(f"법정동 경계 데이터 로드 완료: {dong_url}")
 
+        # GeoJSON 파일 로드 (500m 격자)
         encoded_grid_filename = urllib.parse.quote('seoul_500m_grid.geojson')
         grid_url = base_url + encoded_grid_filename
         geojson_grid = gpd.read_file(grid_url)
         geojson_grid = geojson_grid.to_crs(epsg=4326) # CRS 통일
         st.success(f"500m 격자 데이터 로드 완료: {grid_url}")
+
+        # GeoJSON 파일 로드 (자치구) - NEW
+        encoded_gu_filename = urllib.parse.quote('seoul_gu.geojson') # Assuming user named it seoul_gu.geojson
+        gu_url = base_url + encoded_gu_filename
+        geojson_gu = gpd.read_file(gu_url)
+        geojson_gu = geojson_gu.to_crs(epsg=4326) # CRS 통일
+        st.success(f"자치구 경계 데이터 로드 완료: {gu_url}")
 
         # `seoul_dong.geojson`에는 '법정동코드'가 문자열로 저장되어 있습니다. (Cell zjRgA_OzBjYC 참고)
         # plotly.express의 featureidkey가 `feature.properties.법정동코드`를 사용하려면
@@ -60,19 +68,25 @@ def load_data(base_url):
         if '법정동코드' not in geojson_dong.columns:
             # `EMD_CD` 컬럼이 있다면 이를 이용해 '법정동코드' 생성
             if 'EMD_CD' in geojson_dong.columns:
+                # `df_raw`의 '법정동코드'가 5자리 법정동코드이므로, `EMD_CD`의 마지막 3자리 + '00' 형태로 추출
                 geojson_dong['법정동코드'] = geojson_dong['EMD_CD'].astype(str).str[-3:] + '00'
             else:
                 st.warning("geojson_dong에 'EMD_CD' 또는 '법정동코드' 컬럼이 없어 법정동 시각화에 문제가 있을 수 있습니다.")
 
+        # Ensure `자치구코드` in `geojson_dong` and `SIG_CD` in `geojson_gu` are string for merging
+        if '자치구코드' in geojson_dong.columns:
+            geojson_dong['자치구코드'] = geojson_dong['자치구코드'].astype(str)
+        if 'SIG_CD' in geojson_gu.columns:
+            geojson_gu['SIG_CD'] = geojson_gu['SIG_CD'].astype(str)
 
-        return df, geojson_dong, geojson_grid
+        return df, geojson_dong, geojson_grid, geojson_gu # Return geojson_gu
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {e}")
         st.info("GitHub URL 또는 파일 경로를 확인하거나, 파일이 public repository에 있는지 확인 바랍니다.")
-        return None, None, None
+        return None, None, None, None # Add None for geojson_gu
 
 try:
-    df_raw, geojson_dong, geojson_grid = load_data(github_base_url)
+    df_raw, geojson_dong, geojson_grid, geojson_gu = load_data(github_base_url)
 except Exception as e:
     st.error(f"데이터 파일 로드 중 오류가 발생했습니다: {e}")
     st.stop()
@@ -171,9 +185,20 @@ if submit_button:
                 how='left'
             )
             plot_gdf['avg_환산임대료'] = plot_gdf['avg_환산임대료'].fillna(np.nan) # 데이터 없는 지역은 NaN
+
+            # NEW: Merge with geojson_gu to get SIG_KOR_NM (자치구명)
+            plot_gdf = plot_gdf.merge(
+                geojson_gu[['SIG_CD', 'SIG_KOR_NM']],
+                left_on='자치구코드', # geojson_dong's district code
+                right_on='SIG_CD', # geojson_gu's district code
+                how='left'
+            )
+            # Drop the redundant SIG_CD column from the merge
+            plot_gdf.drop(columns=['SIG_CD'], inplace=True, errors='ignore')
+
             feature_id_key = "properties.법정동코드"
             hover_name_col = "EMD_NM" # Display legal district name
-            hover_data_cols = ['count_거래건수', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료']
+            hover_data_cols = ['count_거래건수', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료', 'SIG_KOR_NM'] # Added SIG_KOR_NM
         else: # 격자별
             plot_gdf = target_geojson.merge(
                 aggregated_df,
@@ -208,7 +233,8 @@ if submit_button:
                 "count_거래건수": "거래 건수",
                 "min_환산임대료": "최소 환산 임대료 (만원)",
                 "max_환산임대료": "최고 환산 임대료 (만원)",
-                "median_환산임대료": "중앙 환산 임대료 (만원)"
+                "median_환산임대료": "중앙 환산 임대료 (만원)",
+                "SIG_KOR_NM": "자치구"
             },
             hover_name=hover_name_col, # Use EMD_NM or grid_id for hover label
             hover_data=hover_data_cols # Include other statistics in hover info
@@ -217,7 +243,28 @@ if submit_button:
         st.plotly_chart(fig, use_container_width=True)
 
         st.write(f"총 거래 건수: **{len(df):,}** 건")
-        st.dataframe(aggregated_df)
+
+        # Display the aggregated data in a dataframe as requested by the user
+        if spatial_unit == "법정동별":
+            display_cols = ['SIG_KOR_NM', 'EMD_NM', 'count_거래건수', 'avg_환산임대료', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료']
+            st.dataframe(plot_gdf[display_cols].dropna(subset=['avg_환산임대료']).rename(columns={
+                'SIG_KOR_NM': '자치구',
+                'EMD_NM': '법정동',
+                'count_거래건수': '거래건수',
+                'avg_환산임대료': '평균 환산 임대료 (만원)',
+                'min_환산임대료': '최소 환산 임대료 (만원)',
+                'max_환산임대료': '최고 환산 임대료 (만원)',
+                'median_환산임대료': '중앙 환산 임대료 (만원)'
+            }))
+        else: # 격자별
+            st.dataframe(aggregated_df.rename(columns={
+                'count_거래건수': '거래건수',
+                'avg_환산임대료': '평균 환산 임대료 (만원)',
+                'min_환산임대료': '최소 환산 임대료 (만원)',
+                'max_환산임대료': '최고 환산 임대료 (만원)',
+                'median_환산임대료': '중앙 환산 임대료 (만원)'
+            }))
+
     else:
         st.warning("선택한 조건에 해당하는 데이터가 없거나, 필요한 컬럼이 누락되었습니다.")
 else:

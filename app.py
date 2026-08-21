@@ -3,6 +3,7 @@ import pandas as pd
 import geopandas as gpd
 import plotly.express as px
 import urllib.parse # URL 인코딩을 위해 추가
+import numpy as np # np.nan을 사용하기 위해 추가
 
 # --- 1. 페이지 설정 ---
 st.set_page_config(
@@ -144,7 +145,6 @@ if submit_button:
         # 법정동 또는 격자 기준으로 집계
         group_col = "법정동코드" if spatial_unit == "법정동별" else "grid_id"
         target_geojson = geojson_dong if spatial_unit == "법정동별" else geojson_grid
-        feature_id_key = f"properties.{group_col}" # featureidkey를 group_col에 맞춤
 
         # `group_col`이 `df`에 있는지 확인하고 타입 통일
         if group_col in df.columns:
@@ -153,25 +153,65 @@ if submit_button:
             if group_col in target_geojson.columns:
                 target_geojson[group_col] = target_geojson[group_col].astype(str)
 
-        aggregated_df = df.groupby(group_col)["adjusted_rent"].mean().reset_index()
+        # Aggregate statistics
+        aggregated_df = df.groupby(group_col)["adjusted_rent"].agg(
+            count_거래건수='count',
+            avg_환산임대료='mean',
+            min_환산임대료='min',
+            max_환산임대료='max',
+            median_환산임대료='median'
+        ).reset_index()
+
+        # Merge with GeoJSON for plotting
+        if spatial_unit == "법정동별":
+            plot_gdf = target_geojson.merge(
+                aggregated_df,
+                left_on='법정동코드',
+                right_on='법정동코드',
+                how='left'
+            )
+            plot_gdf['avg_환산임대료'] = plot_gdf['avg_환산임대료'].fillna(np.nan) # 데이터 없는 지역은 NaN
+            feature_id_key = "properties.법정동코드"
+            hover_name_col = "EMD_NM" # Display legal district name
+            hover_data_cols = ['count_거래건수', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료']
+        else: # 격자별
+            plot_gdf = target_geojson.merge(
+                aggregated_df,
+                left_on='grid_id',
+                right_on='grid_id',
+                how='left'
+            )
+            plot_gdf['avg_환산임대료'] = plot_gdf['avg_환산임대료'].fillna(np.nan) # 데이터 없는 지역은 NaN
+            feature_id_key = "properties.grid_id"
+            hover_name_col = "grid_id" # Display grid_id for grid
+            hover_data_cols = ['count_거래건수', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료']
+
 
         # 5. 지도 시각화
         st.subheader(f"📊 {selected_year}년 {house_type_selection} {spatial_unit} 평균 환산 임대료")
 
         # Plotly Express Choropleth Map
         fig = px.choropleth_mapbox(
-            aggregated_df,
-            geojson=target_geojson,
-            locations=group_col,
-            featureidkey=feature_id_key,
-            color="adjusted_rent",
+            plot_gdf.dropna(subset=['avg_환산임대료']), # Only plot areas with data
+            geojson=target_geojson, # Use original geojson for boundaries
+            locations=group_col, # Column in aggregated_df/plot_gdf for matching
+            featureidkey=feature_id_key, # Key in geojson properties for matching
+            color="avg_환산임대료",
             color_continuous_scale="Viridis",
-            range_color=(aggregated_df["adjusted_rent"].min(), aggregated_df["adjusted_rent"].max()),
+            range_color=(plot_gdf["avg_환산임대료"].min(), plot_gdf["avg_환산임대료"].max()),
             mapbox_style="carto-positron",
             zoom=9,
             center={"lat": 37.5665, "lon": 126.9780},
             opacity=0.6,
-            labels={"adjusted_rent": "환산 임대료 (만원)"}
+            labels={
+                "avg_환산임대료": "평균 환산 임대료 (만원)",
+                "count_거래건수": "거래 건수",
+                "min_환산임대료": "최소 환산 임대료 (만원)",
+                "max_환산임대료": "최고 환산 임대료 (만원)",
+                "median_환산임대료": "중앙 환산 임대료 (만원)"
+            },
+            hover_name=hover_name_col, # Use EMD_NM or grid_id for hover label
+            hover_data=hover_data_cols # Include other statistics in hover info
         )
         fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=600)
         st.plotly_chart(fig, use_container_width=True)

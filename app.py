@@ -15,7 +15,7 @@ st.title("🏢 연립다세대·오피스텔 조건별 연도별 임대료 시�
 
 # --- GitHub raw content URL 설정 ---
 # {YOUR_USERNAME}, {YOUR_REPOSITORY}, {YOUR_BRANCH}는 실제 값으로 변경해야 합니다.
-# 🚨 중요: 데이터 파일의 실제 GitHub 경로에 맞춰 'github_base_url'을 설정해야 합니다.
+# ☢☢ 중요: 데이터 파일의 실제 GitHub 경로에 맞춰 'github_base_url'을 설정해야 합니다.
 # 예시 1: 'app.py'와 데이터 파일들이 모두 리포지토리 루트에 있다면:
 # github_base_url = 'https://raw.githubusercontent.com/{YOUR_USERNAME}/{YOUR_REPOSITORY}/{YOUR_BRANCH}/'
 # 예시 2: 'app.py'는 리포지토리 루트에 있고, 데이터 파일들은 'data/' 하위 디렉토리에 있다면:
@@ -74,10 +74,20 @@ def load_data(base_url):
                 st.warning("geojson_dong에 'EMD_CD' 또는 '법정동코드' 컬럼이 없어 법정동 시각화에 문제가 있을 수 있습니다.")
 
         # Ensure `자치구코드` in `geojson_dong` and `SIG_CD` in `geojson_gu` are string for merging
+        if '자치구코드' not in geojson_dong.columns and 'EMD_CD' in geojson_dong.columns:
+            geojson_dong['자치구코드'] = geojson_dong['EMD_CD'].astype(str).str[0:5]
+
         if '자치구코드' in geojson_dong.columns:
             geojson_dong['자치구코드'] = geojson_dong['자치구코드'].astype(str)
         if 'SIG_CD' in geojson_gu.columns:
             geojson_gu['SIG_CD'] = geojson_gu['SIG_CD'].astype(str)
+
+        # 지도 시각화의 고유 ID로 사용할 unique_map_key 생성 (자치구코드 + 법정동코드)
+        if '자치구코드' in geojson_dong.columns and '법정동코드' in geojson_dong.columns:
+            geojson_dong['unique_map_key'] = geojson_dong['자치구코드'].astype(str) + '_' + geojson_dong['법정동코드'].astype(str)
+        else:
+            st.warning("geojson_dong에 '자치구코드' 또는 '법정동코드' 컬럼이 없어 unique_map_key를 생성할 수 없습니다.")
+
 
         return df, geojson_dong, geojson_grid, geojson_gu # Return geojson_gu
     except Exception as e:
@@ -157,7 +167,15 @@ if submit_button:
         df["adjusted_rent"] = df["임대료(만원)"] - (df["보증금(만원)"] - base_deposit) * 0.005
 
         # 법정동 또는 격자 기준으로 집계
-        group_col = "법정동코드" if spatial_unit == "법정동별" else "grid_id"
+        # '법정동별' 시각화 시에는 자치구코드와 법정동코드를 조합한 고유 키 사용
+        if spatial_unit == "법정동별":
+            df['unique_map_key'] = df['자치구코드'].astype(str) + '_' + df['법정동코드'].astype(str)
+            group_col = "unique_map_key"
+            # `target_geojson`도 `unique_map_key`를 포함해야 함
+            # `geojson_dong`이 이미 `unique_map_key`를 가지고 있으므로 `target_geojson`은 그대로 `geojson_dong` 사용
+        else:
+            group_col = "grid_id"
+        
         target_geojson = geojson_dong if spatial_unit == "법정동별" else geojson_grid
 
         # `group_col`이 `df`에 있는지 확인하고 타입 통일
@@ -180,8 +198,8 @@ if submit_button:
         if spatial_unit == "법정동별":
             plot_gdf = target_geojson.merge(
                 aggregated_df,
-                left_on='법정동코드',
-                right_on='법정동코드',
+                left_on='unique_map_key', # GeoJSON의 고유 키
+                right_on='unique_map_key', # 집계된 데이터의 고유 키
                 how='left'
             )
             plot_gdf['avg_환산임대료'] = plot_gdf['avg_환산임대료'].fillna(np.nan) # 데이터 없는 지역은 NaN
@@ -196,7 +214,7 @@ if submit_button:
             # Drop the redundant SIG_CD column from the merge
             plot_gdf.drop(columns=['SIG_CD'], inplace=True, errors='ignore')
 
-            feature_id_key = "properties.법정동코드"
+            feature_id_key = "properties.unique_map_key" # Plotly가 GeoJSON에서 찾을 고유 키
             hover_name_col = "EMD_NM" # Display legal district name
             hover_data_cols = ['count_거래건수', 'min_환산임대료', 'max_환산임대료', 'median_환산임대료', 'SIG_KOR_NM'] # Added SIG_KOR_NM
         else: # 격자별
